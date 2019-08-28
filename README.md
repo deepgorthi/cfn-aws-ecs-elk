@@ -17,3 +17,5 @@ A network partition (a.k.a. Split Brain) is a situation where a network failure 
 
 > [Following the methodology here](https://scalac.io/split-brain-scenarios-with-akka-scala/#targetText=A%20network%20partition%20membership%20data%20of%20the%20cluster)
 
+Working with immutable infrastructure.
+

@@ -3,7 +3,8 @@
 
 I will outline the procedure I followed to deploy Elastic Stack on AWS ECS.
 
-Here goes the image that shows the architecture followed.
+Here is the architecture
+![Arch](https://github.com/deepgorthi/elk-stack-on-aws-ecs/blob/master/ELK-ECS.jpg)
 
 In the diagram above, we have the following containers:
 - Three ElasticSearch containers to ensure high availability. Odd number to minimize split brain scenarios.

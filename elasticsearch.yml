@@ -1,4 +1,4 @@
-cluster.name: "deves00"
+cluster.name: "deves"
 bootstrap.memory_lock: false
 network.host: 0.0.0.0
 network.publish_host: _ec2:privateIp_

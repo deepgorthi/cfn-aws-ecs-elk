@@ -1,4 +1,4 @@
-# elk-stack-on-aws-ecs
+# ELK-stack-on-AWS-ECS
  Deploying Elastic Stack on AWS Elastic Container Service
 
 I will outline the procedure I followed to deploy Elastic Stack on AWS ECS.
@@ -32,7 +32,29 @@ Few points that need to be addressed:
 - We need to allocate more space to our ElasticSearch nodes than the standard 8GB granted by Amazon.
 - We need to customize the docker daemon to take advantage of the extra space.
 
-Adding this to User Data section of the EC2 instances in CloudFormation Changeset.
+
+|**Cluster** | **dev-elk-cluster** |
+| --- | --- |
+| Instance type | t2.micro | 
+| Desired number of instances | 3 |
+Key pair | elk-stack
+ECS AMI ID|ami-066ce9bb9f4cbb03d
+VPC|vpc-071e76a617d759d04
+Subnet 1|subnet-02f18e573300175b6
+Subnet 1 route table association|rtbassoc-06119201929019675
+Subnet 2|subnet-0b8babda5dab2c0b7
+Subnet 2 route table association|rtbassoc-0881ec1492ec2c853
+VPC Availability Zones|us-east-1a, us-east-1b, us-east-1c, us-east-1d, us-east-1e, us-east-1f
+Security group|sg-0cfae2130059a5738
+Internet gateway|igw-0a96cb67118059687
+Route table|rtb-0de91746702e12029
+Amazon EC2 route|EC2Co-Publi-VF872SCT2020
+Virtual private gateway attachment|EC2Co-Attac-17Z48YC2S8CVW
+Launch configuration|EC2ContainerService-dev-elk-cluster-EcsInstanceLc-154J2FEYWM6UX
+| Auto Scaling group |EC2ContainerService-dev-elk-cluster-EcsInstanceAsg-1OEDR2NDUIUHE |
+---
+
+Adding the following content to User Data section of the EC2 instances in CloudFormation Changeset.
 ```
 Content-Type: multipart/mixed; boundary="==BOUNDARY=="
 MIME-Version: 1.0
@@ -47,20 +69,23 @@ cloud-init-per once docker_options echo 'OPTIONS="${OPTIONS} --storage-opt dm.ba
 Content-Type: text/x-shellscript; charset="us-ascii"
 
 #!/bin/bash
-# Set the ECS agent configuration options
-cat <<'EOF' >> /etc/ecs/ecs.config
-ECS_CLUSTER=platformnonprod
-ECS_ENGINE_TASK_CLEANUP_WAIT_DURATION=15m
-ECS_IMAGE_CLEANUP_INTERVAL=10m
-EOF
-sysctl -w vm.max_map_count=262144
-mkdir -p /usr/share/elasticsearch/data/
-chown -R 1000.1000 /usr/share/elasticsearch/data/
+echo ECS_CLUSTER=dev-elk-cluster >> /etc/ecs/ecs.config;
+echo ECS_BACKEND_HOST=dev-elk-cluster >> /etc/ecs/ecs.config;
+echo ECS_ENGINE_TASK_CLEANUP_WAIT_DURATION=15m >> /etc/ecs/ecs.config;
+echo ECS_IMAGE_CLEANUP_INTERVAL=10m >> /etc/ecs/ecs.config;
+sysctl -w vm.max_map_count=262144;
+mkdir -p /usr/share/elasticsearch/data/;
+chown -R 1000.1000 /usr/share/elasticsearch/data/;
 
 --==BOUNDARY==--
 ```
 
 **Storage**
 
-Adding EBS stores for storage and using PIOPS as advised on elastic's documentation. 
+Adding EBS stores for storage and using PIOPS as advised on elastic's documentation. Or we can go with using Instance Store that has the advantage of hard disk physical attached to the host and also benefit of avoiding to pay extra for EBS. 
+
+**Note:** EBS Storage option in ECS Cluster configuration is not the storage for containers to store their data. This volume is strictly for docker images. 
+
+Amazon explains this:
+> The volume is configured as a Logical Volume Management (LVM) device and it is accessed directly by Docker via the devicemapper backend. Because the volume is not mounted, you cannot use standard storage information commands (such as df -h) to determine the available storage.
 

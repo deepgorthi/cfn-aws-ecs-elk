@@ -59,3 +59,8 @@ chown -R 1000.1000 /usr/share/elasticsearch/data/
 
 --==BOUNDARY==--
 ```
+
+**Storage**
+
+Adding EBS stores for storage and using PIOPS as advised on elastic's documentation. 
+

@@ -56,16 +56,16 @@ Launch configuration|EC2ContainerService-dev-elk-cluster-EcsInstanceLc-154J2FEYW
 
 Adding the following content to User Data section of the EC2 instances in CloudFormation Changeset.
 ```
-Content-Type: multipart/mixed; boundary="==BOUNDARY=="
+Content-Type: multipart/mixed; boundary="//"
 MIME-Version: 1.0
 
---==BOUNDARY==
+--//
 Content-Type: text/cloud-boothook; charset="us-ascii"
 
 # Set Docker daemon options
 cloud-init-per once docker_options echo 'OPTIONS="${OPTIONS} --storage-opt dm.basesize=250G"' >> /etc/sysconfig/docker
 
---==BOUNDARY==
+--//
 Content-Type: text/x-shellscript; charset="us-ascii"
 
 #!/bin/bash
@@ -77,9 +77,37 @@ sysctl -w vm.max_map_count=262144;
 mkdir -p /usr/share/elasticsearch/data/;
 chown -R 1000.1000 /usr/share/elasticsearch/data/;
 
---==BOUNDARY==--
+--//--
 ```
 
+```
+"UserData" : { "Fn::Base64" : { "Fn::Join" : ["", [
+"Content-Type: multipart/mixed; boundary='//'\n",
+"MIME-Version: 1.0\n",
+"\n",
+"--//\n",
+"Content-Type: text/cloud-boothook; charset='us-ascii'\n",
+"\n",
+"# Set Docker daemon options\n",
+"cloud-init-per once docker_options echo 'OPTIONS="${OPTIONS} --storage-opt dm.basesize=50G"' >> /etc/sysconfig/docker\n",
+"\n",
+"--//\n",
+"Content-Type: text/x-shellscript; charset='us-ascii'\n",
+"\n",
+"#!/bin/bash -xe\n",
+"cat << 'EOF' >> /etc/ecs/ecs.config\n",
+"echo ECS_CLUSTER=dev-elk-cluster\n",
+"echo ECS_BACKEND_HOST=dev-elk-cluster\n",
+"echo ECS_ENGINE_TASK_CLEANUP_WAIT_DURATION=15m\n",
+"echo ECS_IMAGE_CLEANUP_INTERVAL=10m\n",
+"EOF\n",
+"sysctl -w vm.max_map_count=262144\n",
+"mkdir -p /usr/share/elasticsearch/data/\n",
+"chown -R 1000.1000 /usr/share/elasticsearch/data/\n",
+"\n",
+"--//--\n"
+]]}}
+```
 **Storage**
 
 Adding EBS stores for storage and using PIOPS as advised on elastic's documentation. Or we can go with using Instance Store that has the advantage of hard disk physical attached to the host and also benefit of avoiding to pay extra for EBS. 

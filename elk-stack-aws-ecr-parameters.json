@@ -1,0 +1,10 @@
+[
+    {
+      "ParameterKey": "AWSAccountId",
+      "ParameterValue": "XXXXXXXXXXXX"
+    },
+    {
+      "ParameterKey": "AWSECRAdminUser",
+      "ParameterValue": "ecr-admin-user"
+    }
+  ]

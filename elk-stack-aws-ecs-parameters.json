@@ -1,0 +1,46 @@
+[
+    {
+      "ParameterKey": "AWSAccountId",
+      "ParameterValue": "XXXXXXXXXXXX"
+    },
+    {
+      "ParameterKey": "Route53HostedZoneName",
+      "ParameterValue": "elk-stack-deployment.com."
+    },
+    {
+      "ParameterKey": "KeyName",
+      "ParameterValue": "elk-stack.pem"
+    },
+    {
+      "ParameterKey": "VpcId",
+      "ParameterValue": "vpc-XXXXXXXXXXXXXXXXX"
+    },
+    {
+      "ParameterKey": "SubnetId",
+      "ParameterValue": "subnet-XXXXXXXXXXXXXXXXX,subnet-XXXXXXXXXXXXXXXXX,subnet-XXXXXXXXXXXXXXXXX"
+    },
+    {
+      "ParameterKey": "DesiredCapacity",
+      "ParameterValue": "3"
+    },
+    {
+      "ParameterKey": "MaxSize",
+      "ParameterValue": "3"
+    },
+    {
+      "ParameterKey": "InstanceType",
+      "ParameterValue": "m5.4xlarge"
+    },
+    {
+      "ParameterKey": "ESVersion",
+      "ParameterValue": "6.5.4"
+    },
+    {
+      "ParameterKey": "ESInstanceCount",
+      "ParameterValue": "3"
+    },
+    {
+      "ParameterKey": "KibanaInstanceCount",
+      "ParameterValue": "1"
+    }
+  ]

@@ -1,0 +1,1163 @@
+{
+    "AWSTemplateFormatVersion":"2010-09-09",
+    "Parameters":{
+      "AWSAccountId":{
+        "Type":"String",
+        "Description":"AWS Account ID"
+      },
+      "Route53HostedZoneName":{
+        "Type":"String",
+        "Description":"Route53 Hosted Zone Name"
+      },
+      "KeyName":{
+        "Type":"AWS::EC2::KeyPair::KeyName",
+        "Description":"Name of an existing EC2 KeyPair to enable SSH access to the ECS instances."
+      },
+      "VpcId":{
+        "Type":"AWS::EC2::VPC::Id",
+        "Description":"Select a VPC that allows instances to access the Internet."
+      },
+      "SubnetId":{
+        "Type":"List<AWS::EC2::Subnet::Id>",
+        "Description":"Select at least two subnets in your selected VPC."
+      },
+      "DesiredCapacity":{
+        "Type":"Number",
+        "Description":"Number of instances to launch in your ECS cluster."
+      },
+      "MaxSize":{
+        "Type":"Number",
+        "Description":"Maximum number of instances that can be launched in your ECS cluster."
+      },
+      "ESVersion":{
+        "Type":"String",
+        "Description":"Version of Elasticsearch and Kibana i.e. 6.5.4"
+      },
+      "ESInstanceCount":{
+        "Type":"Number",
+        "Description":"Maximum number of Elasticsearch containers to launch in your ECS cluster"
+      },
+      "KibanaInstanceCount":{
+        "Type":"Number",
+        "Description":"Maximum number of Kibana containers to launch in your ECS cluster"
+      },
+      "InstanceType":{
+        "Description":"EC2 instance type",
+        "Type":"String",
+        "AllowedValues":[
+          "m5.4xlarge"
+        ],
+        "ConstraintDescription":"Please choose a valid instance type."
+      }
+    },
+    "Mappings":{
+      "AWSRegionToAMI":{
+        "us-east-1":{
+          "AMIID":"ami-045f1b3f87ed83659"
+        },
+        "us-east-2":{
+          "AMIID":"ami-0307f7ccf6ea35750"
+        },
+        "us-west-1":{
+          "AMIID":"ami-0285183bbef6224bd"
+        },
+        "us-west-2":{
+          "AMIID":"ami-01b70aea4161476b7"
+        },
+        "eu-west-1":{
+          "AMIID":"ami-0627e141ce928067c"
+        },
+        "eu-central-1":{
+          "AMIID":"ami-0eaa3baf6969912ba"
+        },
+        "ap-northeast-1":{
+          "AMIID":"ami-05b296a384694dfa4"
+        },
+        "ap-southeast-1":{
+          "AMIID":"ami-050865a806e0dae53"
+        },
+        "ap-southeast-2":{
+          "AMIID":"ami-02c73ee1100ce3e7a"
+        }
+      }
+    },
+    "Resources":{
+      "ECSCluster":{
+        "Type":"AWS::ECS::Cluster"
+      },
+      "EcsSecurityGroup":{
+        "Type":"AWS::EC2::SecurityGroup",
+        "Properties":{
+          "GroupDescription":"ECS Security Group",
+          "VpcId":{
+            "Ref":"VpcId"
+          }
+        }
+      },
+      "EcsSecurityGroupHTTPinbound":{
+        "Type":"AWS::EC2::SecurityGroupIngress",
+        "Properties":{
+          "GroupId":{
+            "Ref":"EcsSecurityGroup"
+          },
+          "IpProtocol":"tcp",
+          "FromPort":"80",
+          "ToPort":"80",
+          "CidrIp":"0.0.0.0/0"
+        }
+      },
+      "EcsSecurityGroupSSHinbound":{
+        "Type":"AWS::EC2::SecurityGroupIngress",
+        "Properties":{
+          "GroupId":{
+            "Ref":"EcsSecurityGroup"
+          },
+          "IpProtocol":"tcp",
+          "FromPort":"22",
+          "ToPort":"22",
+          "CidrIp":"0.0.0.0/0"
+        }
+      },
+      "EcsSecurityGroupALLPorts":{
+        "Type":"AWS::EC2::SecurityGroupIngress",
+        "Properties":{
+          "GroupId":{
+            "Ref":"EcsSecurityGroup"
+          },
+          "IpProtocol":"-1",
+          "FromPort":"-1",
+          "ToPort":"-1",
+          "SourceSecurityGroupId":{
+            "Ref":"EcsSecurityGroup"
+          }
+        }
+      },
+      "CloudwatchLogsGroup":{
+        "Type":"AWS::Logs::LogGroup",
+        "Properties":{
+          "LogGroupName":"/aws/ecs/ecs",
+          "RetentionInDays":14
+        }
+      },
+      "ESTaskDefinition":{
+        "Type":"AWS::ECS::TaskDefinition",
+        "Properties":{
+          "Family":{
+            "Fn::Join":[
+              "",
+              [
+                {
+                  "Ref":"AWS::StackName"
+                },
+                "-es"
+              ]
+            ]
+          },
+          "Volumes": [
+            {
+              "Name": "esdata",
+              "Host" : { 
+                "SourcePath" : "/usr/share/elasticsearch/data"
+              }
+            }
+          ],
+          "ContainerDefinitions":[
+            {
+              "Name":"elasticsearch",
+              "DockerLabels" : {"Owner":"Platform", "Application" : "ElasticSearch"},
+              "Essential":"true",
+              "Image": {
+                "Fn::Join":[
+                  "",
+                  [
+                    { "Ref":"AWSAccountId" },
+                    ".dkr.ecr.",
+                    { "Ref":"AWS::Region" },
+                    ".amazonaws.com/elasticsearch:",
+                    { "Ref":"ESVersion" }
+                  ]
+                ]
+              },
+              "MemoryReservation":"32768",
+              "LogConfiguration":{
+                "LogDriver":"awslogs",
+                "Options":{
+                  "awslogs-group":{
+                    "Ref":"CloudwatchLogsGroup"
+                  },
+                  "awslogs-region":{
+                    "Ref":"AWS::Region"
+                  },
+                  "awslogs-stream-prefix":"es"
+                }
+              },
+              "MountPoints":[
+                {
+                  "SourceVolume": "esdata",
+                  "ContainerPath": "/usr/share/elasticsearch/data",
+                  "ReadOnly": false
+                }
+              ],
+              "PortMappings":[
+                {
+                  "ContainerPort": 9200,
+                  "HostPort" : 9200
+                },
+                {
+                  "ContainerPort": 9300,
+                  "HostPort" : 9300
+                }
+              ],
+              "Environment" : [
+                {
+                  "Name" : "ES_JAVA_OPTS",
+                  "Value" : "-Xms16g -Xmx16g"
+                },
+                {
+                  "Name" : "REGION",
+                  "Value" : {
+                    "Ref":"AWS::Region"
+                  }
+                }
+              ],
+              "Ulimits" : [
+                {
+                  "Name" : "nofile",
+                  "SoftLimit" : 65536,
+                  "HardLimit" : 65536
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "ESALB":{
+        "Type":"AWS::ElasticLoadBalancingV2::LoadBalancer",
+        "Properties":{
+          "Name":"ESALB",
+          "Scheme":"internal",
+          "LoadBalancerAttributes":[
+            {
+              "Key":"idle_timeout.timeout_seconds",
+              "Value":"30"
+            }
+          ],
+          "Subnets":{
+            "Ref":"SubnetId"
+          },
+          "SecurityGroups":[
+            {
+              "Ref":"EcsSecurityGroup"
+            }
+          ],
+          "Type" : "application"
+        }
+      },
+      "ESALBListener":{
+        "Type":"AWS::ElasticLoadBalancingV2::Listener",
+        "DependsOn":"ECSServiceRole",
+        "Properties":{
+          "DefaultActions":[
+            {
+              "Type":"forward",
+              "TargetGroupArn":{
+                "Ref":"ESSTG"
+              }
+            }
+          ],
+          "LoadBalancerArn":{
+            "Ref":"ESALB"
+          },
+          "Port":"9200",
+          "Protocol":"HTTP"
+        }
+      },
+      "ESALBListenerRule":{
+        "Type":"AWS::ElasticLoadBalancingV2::ListenerRule",
+        "DependsOn":"ESALBListener",
+        "Properties":{
+          "Actions":[
+            {
+              "Type":"forward",
+              "TargetGroupArn":{
+                "Ref":"ESSTG"
+              }
+            }
+          ],
+          "Conditions":[
+            {
+              "Field":"path-pattern",
+              "Values":[
+                "/"
+              ]
+            }
+          ],
+          "ListenerArn":{
+            "Ref":"ESALBListener"
+          },
+          "Priority":1
+        }
+      },
+      "ESSTG":{
+        "Type":"AWS::ElasticLoadBalancingV2::TargetGroup",
+        "DependsOn":"ESALB",
+        "Properties":{
+          "HealthCheckIntervalSeconds":10,
+          "HealthCheckPath":"/_cat/health",
+          "HealthCheckProtocol":"HTTP",
+          "HealthCheckTimeoutSeconds":5,
+          "HealthyThresholdCount":2,
+          "Name":"ESSTG",
+          "Port":9200,
+          "Protocol":"HTTP",
+          "UnhealthyThresholdCount":2,
+          "VpcId":{
+            "Ref":"VpcId"
+          }
+        }
+      },
+      "ESECSService":{
+        "Type":"AWS::ECS::Service",
+        "DependsOn":"ESALBListener",
+        "Properties":{
+          "Cluster":{
+            "Ref":"ECSCluster"
+          },
+          "DesiredCount":"1",
+          "LoadBalancers":[
+            {
+              "ContainerName":"elasticsearch",
+              "ContainerPort":"9200",
+              "TargetGroupArn":{
+                "Ref":"ESSTG"
+              }
+            }
+          ],
+          "Role":{
+            "Ref":"ECSServiceRole"
+          },
+          "TaskDefinition":{
+            "Ref":"ESTaskDefinition"
+          }
+        }
+      },
+      "ESServiceScalingTarget":{
+        "Type":"AWS::ApplicationAutoScaling::ScalableTarget",
+        "DependsOn":"ESECSService",
+        "Properties":{
+          "MaxCapacity":{
+            "Ref":"ESInstanceCount"
+          },
+          "MinCapacity":{
+            "Ref":"ESInstanceCount"
+          },
+          "ResourceId":{
+            "Fn::Join":[
+              "",
+              [
+                "service/",
+                {
+                  "Ref":"ECSCluster"
+                },
+                "/",
+                {
+                  "Fn::GetAtt":[
+                    "ESECSService",
+                    "Name"
+                  ]
+                }
+              ]
+            ]
+          },
+          "RoleARN":{
+            "Fn::GetAtt":[
+              "AutoscalingRole",
+              "Arn"
+            ]
+          },
+          "ScalableDimension":"ecs:service:DesiredCount",
+          "ServiceNamespace":"ecs"
+        }
+      },
+      "ESServiceScalingPolicy":{
+        "Type":"AWS::ApplicationAutoScaling::ScalingPolicy",
+        "Properties":{
+          "PolicyName":"AStepPolicy",
+          "PolicyType":"StepScaling",
+          "ScalingTargetId":{
+            "Ref":"ESServiceScalingTarget"
+          },
+          "StepScalingPolicyConfiguration":{
+            "AdjustmentType":"PercentChangeInCapacity",
+            "Cooldown":60,
+            "MetricAggregationType":"Average",
+            "StepAdjustments":[
+              {
+                "MetricIntervalLowerBound":0,
+                "ScalingAdjustment":200
+              }
+            ]
+          }
+        }
+      },
+      "ESALB500sAlarmScaleUp":{
+        "Type":"AWS::CloudWatch::Alarm",
+        "Properties":{
+          "EvaluationPeriods":"1",
+          "Statistic":"Average",
+          "Threshold":"10",
+          "AlarmDescription":"Alarm if our ALB generates too many HTTP 500s.",
+          "Period":"60",
+          "AlarmActions":[
+            {
+              "Ref":"ESServiceScalingPolicy"
+            }
+          ],
+          "Namespace":"AWS/ApplicationELB",
+          "Dimensions":[
+            {
+              "Name":"LoadBalancer",
+              "Value":{
+                "Fn::GetAtt" : [ 
+                  "ESALB", 
+                  "LoadBalancerFullName"
+                ] 
+              }
+            }
+          ],
+          "ComparisonOperator":"GreaterThanThreshold",
+          "MetricName":"HTTPCode_ELB_5XX_Count"
+        }
+      },
+      "EC2Role":{
+        "Type":"AWS::IAM::Role",
+        "Properties":{
+          "AssumeRolePolicyDocument":{
+            "Statement":[
+              {
+                "Effect":"Allow",
+                "Principal":{
+                  "Service":[
+                    "ec2.amazonaws.com"
+                  ]
+                },
+                "Action":[
+                  "sts:AssumeRole"
+                ]
+              }
+            ]
+          },
+          "Path":"/",
+          "Policies":[
+            {
+              "PolicyName":"ecs-service",
+              "PolicyDocument":{
+                "Statement":[
+                  {
+                    "Effect":"Allow",
+                    "Action":[
+                      "ecs:CreateCluster",
+                      "ecs:DeregisterContainerInstance",
+                      "ecs:DiscoverPollEndpoint",
+                      "ecs:Poll",
+                      "ecs:RegisterContainerInstance",
+                      "ecs:StartTelemetrySession",
+                      "ecs:Submit*",
+                      "logs:CreateLogStream",
+                      "logs:PutLogEvents"
+                    ],
+                    "Resource":"*"
+                  },
+                  {
+                    "Effect": "Allow",
+                    "Action": [
+                      "ecr:GetAuthorizationToken",
+                      "ecr:BatchCheckLayerAvailability",
+                      "ecr:GetDownloadUrlForLayer",
+                      "ecr:GetRepositoryPolicy",
+                      "ecr:DescribeRepositories",
+                      "ecr:ListImages",
+                      "ecr:DescribeImages",
+                      "ecr:BatchGetImage"
+                    ],
+                    "Resource": "*"
+                  },
+                  {
+                    "Effect": "Allow",
+                    "Action": [
+                      "ec2:DescribeAvailabilityZones",
+                      "ec2:DescribeInstanceAttribute",
+                      "ec2:DescribeInstances",
+                      "ec2:DescribeRegions",
+                      "ec2:DescribeSecurityGroups",
+                      "ec2:DescribeTags"
+                    ],
+                    "Resource": "*"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "KibanaTaskDefinition":{
+        "Type":"AWS::ECS::TaskDefinition",
+        "Properties":{
+          "Family":{
+            "Fn::Join":[
+              "",
+              [
+                {
+                  "Ref":"AWS::StackName"
+                },
+                "-kibana"
+              ]
+            ]
+          },
+          "ContainerDefinitions":[
+            {
+              "Name":"kibana",
+              "DockerLabels" : {"Owner":"Platform", "Application" : "Kibana"},
+              "Essential":"true",
+              "Image": {
+                "Fn::Join":[
+                  "",
+                  [
+                    "docker.elastic.co/kibana/kibana:",
+                    { "Ref":"ESVersion" }
+                  ]
+                ]
+              },
+              "MemoryReservation":"16384",
+              "LogConfiguration":{
+                "LogDriver":"awslogs",
+                "Options":{
+                  "awslogs-group":{
+                    "Ref":"CloudwatchLogsGroup"
+                  },
+                  "awslogs-region":{
+                    "Ref":"AWS::Region"
+                  },
+                  "awslogs-stream-prefix":"kibana"
+                }
+              },
+              "PortMappings":[
+                {
+                  "ContainerPort": 5601,
+                  "HostPort" : 5601
+                }
+              ],
+              "Environment" : [
+                {
+                  "Name" : "ELASTICSEARCH_URL",
+                  "Value" : {
+                    "Fn::Join": [
+                      "",
+                      [
+                        "http://",
+                        {
+                          "Fn::GetAtt":[
+                            "ESALB",
+                            "DNSName"
+                          ]
+                        },
+                        ":9200"
+                      ]
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "KibanaALB":{
+        "Type":"AWS::ElasticLoadBalancingV2::LoadBalancer",
+        "Properties":{
+          "Name":"KibanaALB",
+          "Scheme":"internal",
+          "LoadBalancerAttributes":[
+            {
+              "Key":"idle_timeout.timeout_seconds",
+              "Value":"30"
+            }
+          ],
+          "Subnets":{
+            "Ref":"SubnetId"
+          },
+          "SecurityGroups":[
+            {
+              "Ref":"EcsSecurityGroup"
+            }
+          ],
+          "Type" : "application"
+        }
+      },
+      "KibanaALBListener":{
+        "Type":"AWS::ElasticLoadBalancingV2::Listener",
+        "DependsOn":"ECSServiceRole",
+        "Properties":{
+          "DefaultActions":[
+            {
+              "Type":"forward",
+              "TargetGroupArn":{
+                "Ref":"KibanaSTG"
+              }
+            }
+          ],
+          "LoadBalancerArn":{
+            "Ref":"KibanaALB"
+          },
+          "Port":"5601",
+          "Protocol":"HTTP"
+        }
+      },
+      "KibanaALBListenerRule":{
+        "Type":"AWS::ElasticLoadBalancingV2::ListenerRule",
+        "DependsOn":"KibanaALBListener",
+        "Properties":{
+          "Actions":[
+            {
+              "Type":"forward",
+              "TargetGroupArn":{
+                "Ref":"KibanaSTG"
+              }
+            }
+          ],
+          "Conditions":[
+            {
+              "Field":"path-pattern",
+              "Values":[
+                "/"
+              ]
+            }
+          ],
+          "ListenerArn":{
+            "Ref":"KibanaALBListener"
+          },
+          "Priority":1
+        }
+      },
+      "KibanaSTG":{
+        "Type":"AWS::ElasticLoadBalancingV2::TargetGroup",
+        "DependsOn":"KibanaALB",
+        "Properties":{
+          "HealthCheckIntervalSeconds":10,
+          "HealthCheckPath":"/app/kibana",
+          "HealthCheckProtocol":"HTTP",
+          "HealthCheckTimeoutSeconds":5,
+          "HealthyThresholdCount":2,
+          "Name":"KibanaSTG",
+          "Port":5601,
+          "Protocol":"HTTP",
+          "UnhealthyThresholdCount":2,
+          "VpcId":{
+            "Ref":"VpcId"
+          }
+        }
+      },
+      "KibanaECSService":{
+        "Type":"AWS::ECS::Service",
+        "DependsOn":"KibanaALBListener",
+        "Properties":{
+          "Cluster":{
+            "Ref":"ECSCluster"
+          },
+          "DesiredCount":"1",
+          "LoadBalancers":[
+            {
+              "ContainerName":"kibana",
+              "ContainerPort":"5601",
+              "TargetGroupArn":{
+                "Ref":"KibanaSTG"
+              }
+            }
+          ],
+          "Role":{
+            "Ref":"ECSServiceRole"
+          },
+          "TaskDefinition":{
+            "Ref":"KibanaTaskDefinition"
+          }
+        }
+      },
+      "KibanaServiceScalingTarget":{
+        "Type":"AWS::ApplicationAutoScaling::ScalableTarget",
+        "DependsOn":"KibanaECSService",
+        "Properties":{
+          "MaxCapacity":{
+            "Ref":"KibanaInstanceCount"
+          },
+          "MinCapacity":{
+            "Ref":"KibanaInstanceCount"
+          },
+          "ResourceId":{
+            "Fn::Join":[
+              "",
+              [
+                "service/",
+                {
+                  "Ref":"ECSCluster"
+                },
+                "/",
+                {
+                  "Fn::GetAtt":[
+                    "KibanaECSService",
+                    "Name"
+                  ]
+                }
+              ]
+            ]
+          },
+          "RoleARN":{
+            "Fn::GetAtt":[
+              "AutoscalingRole",
+              "Arn"
+            ]
+          },
+          "ScalableDimension":"ecs:service:DesiredCount",
+          "ServiceNamespace":"ecs"
+        }
+      },
+      "KibanaServiceScalingPolicy":{
+        "Type":"AWS::ApplicationAutoScaling::ScalingPolicy",
+        "Properties":{
+          "PolicyName":"AStepPolicy",
+          "PolicyType":"StepScaling",
+          "ScalingTargetId":{
+            "Ref":"KibanaServiceScalingTarget"
+          },
+          "StepScalingPolicyConfiguration":{
+            "AdjustmentType":"PercentChangeInCapacity",
+            "Cooldown":60,
+            "MetricAggregationType":"Average",
+            "StepAdjustments":[
+              {
+                "MetricIntervalLowerBound":0,
+                "ScalingAdjustment":200
+              }
+            ]
+          }
+        }
+      },
+      "KibanaALB500sAlarmScaleUp":{
+        "Type":"AWS::CloudWatch::Alarm",
+        "Properties":{
+          "EvaluationPeriods":"1",
+          "Statistic":"Average",
+          "Threshold":"10",
+          "AlarmDescription":"Alarm if our ALB generates too many HTTP 500s.",
+          "Period":"60",
+          "AlarmActions":[
+            {
+              "Ref":"KibanaServiceScalingPolicy"
+            }
+          ],
+          "Namespace":"AWS/ApplicationELB",
+          "Dimensions":[
+            {
+              "Name":"LoadBalancer",
+              "Value":{
+                "Fn::GetAtt" : [ 
+                  "KibanaALB", 
+                  "LoadBalancerFullName"
+                ] 
+              }
+            }
+          ],
+          "ComparisonOperator":"GreaterThanThreshold",
+          "MetricName":"HTTPCode_ELB_5XX_Count"
+        }
+      },
+      "EC2Role":{
+        "Type":"AWS::IAM::Role",
+        "Properties":{
+          "AssumeRolePolicyDocument":{
+            "Statement":[
+              {
+                "Effect":"Allow",
+                "Principal":{
+                  "Service":[
+                    "ec2.amazonaws.com"
+                  ]
+                },
+                "Action":[
+                  "sts:AssumeRole"
+                ]
+              }
+            ]
+          },
+          "Path":"/",
+          "Policies":[
+            {
+              "PolicyName":"ecs-service",
+              "PolicyDocument":{
+                "Statement":[
+                  {
+                    "Effect":"Allow",
+                    "Action":[
+                      "ecs:CreateCluster",
+                      "ecs:DeregisterContainerInstance",
+                      "ecs:DiscoverPollEndpoint",
+                      "ecs:Poll",
+                      "ecs:RegisterContainerInstance",
+                      "ecs:StartTelemetrySession",
+                      "ecs:Submit*",
+                      "logs:CreateLogStream",
+                      "logs:PutLogEvents"
+                    ],
+                    "Resource":"*"
+                  },
+                  {
+                    "Effect": "Allow",
+                    "Action": [
+                      "ecr:GetAuthorizationToken",
+                      "ecr:BatchCheckLayerAvailability",
+                      "ecr:GetDownloadUrlForLayer",
+                      "ecr:GetRepositoryPolicy",
+                      "ecr:DescribeRepositories",
+                      "ecr:ListImages",
+                      "ecr:DescribeImages",
+                      "ecr:BatchGetImage"
+                    ],
+                    "Resource": "*"
+                  },
+                  {
+                    "Effect": "Allow",
+                    "Action": [
+                      "ec2:DescribeAvailabilityZones",
+                      "ec2:DescribeInstanceAttribute",
+                      "ec2:DescribeInstances",
+                      "ec2:DescribeRegions",
+                      "ec2:DescribeSecurityGroups",
+                      "ec2:DescribeTags"
+                    ],
+                    "Resource": "*"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "ECSAutoScalingGroup":{
+        "Type":"AWS::AutoScaling::AutoScalingGroup",
+        "Properties":{
+          "VPCZoneIdentifier":{
+            "Ref":"SubnetId"
+          },
+          "LaunchConfigurationName":{
+            "Ref":"ContainerInstances"
+          },
+          "MinSize":{
+            "Ref":"MaxSize"
+          },
+          "MaxSize":{
+            "Ref":"MaxSize"
+          },
+          "DesiredCapacity":{
+            "Ref":"DesiredCapacity"
+          },
+          "Tags" : [ 
+             {
+                "Key" : "Name",
+                "Value" : "ecs",
+                "PropagateAtLaunch" : "true"
+             }, 
+             {
+                "Key" : "ElasticSearch",
+                "Value" : "es",
+                "PropagateAtLaunch" : "true"
+             }, 
+             {
+                "Key" : "env",
+                "Value" : "dev",
+                "PropagateAtLaunch" : "true"
+             } 
+          ]
+        },
+        "CreationPolicy":{
+          "ResourceSignal":{
+            "Timeout":"PT15M"
+          }
+        },
+        "UpdatePolicy":{
+          "AutoScalingReplacingUpdate":{
+            "WillReplace":"true"
+          }
+        }
+      },
+      "ContainerInstances":{
+        "Type":"AWS::AutoScaling::LaunchConfiguration",
+        "Properties":{
+          "ImageId":{
+            "Fn::FindInMap":[
+              "AWSRegionToAMI",
+              {
+                "Ref":"AWS::Region"
+              },
+              "AMIID"
+            ]
+          },
+          "BlockDeviceMappings": [
+            {
+              "DeviceName": "/dev/xvda",
+              "Ebs": {
+                "VolumeType": "io1",
+                "Iops": "3000",
+                "DeleteOnTermination": "true",
+                "VolumeSize": "250"
+              }
+            }
+          ],
+          "SecurityGroups":[
+            {
+              "Ref":"EcsSecurityGroup"
+            }
+          ],
+          "InstanceType":{
+            "Ref":"InstanceType"
+          },
+          "IamInstanceProfile":{
+            "Ref":"EC2InstanceProfile"
+          },
+          "KeyName":{
+            "Ref":"KeyName"
+          },
+          "UserData":{
+            "Fn::Base64":{
+              "Fn::Join":[
+                "",
+                [
+                  "#!/bin/bash -xe\n",
+                  "echo ECS_CLUSTER=",
+                  {
+                    "Ref":"ECSCluster"
+                  },
+                  " >> /etc/ecs/ecs.config\n",
+                  "yum install -y aws-cfn-bootstrap\n",
+                  "/opt/aws/bin/cfn-signal -e $? ",
+                  "         --stack ",
+                  {
+                    "Ref":"AWS::StackName"
+                  },
+                  "         --resource ECSAutoScalingGroup ",
+                  "         --region ",
+                  {
+                    "Ref":"AWS::Region"
+                  },
+                  "\n",
+                  "echo 'OPTIONS=\"${OPTIONS} --storage-opt dm.basesize=250G\"' >> /etc/sysconfig/docker\n",
+                  "service docker restart\n",
+                  "sysctl -w vm.max_map_count=262144\n",
+                  "mkdir -p /usr/share/elasticsearch/data/\n",
+                  "chown -R 1000.1000 /usr/share/elasticsearch/data/\n",
+                  "\n"
+                ]
+              ]
+            }
+          }
+        }
+      },
+      "ECSServiceRole":{
+        "Type":"AWS::IAM::Role",
+        "Properties":{
+          "AssumeRolePolicyDocument":{
+            "Statement":[
+              {
+                "Effect":"Allow",
+                "Principal":{
+                  "Service":[
+                    "ecs.amazonaws.com"
+                  ]
+                },
+                "Action":[
+                  "sts:AssumeRole"
+                ]
+              }
+            ]
+          },
+          "Path":"/",
+          "Policies":[
+            {
+              "PolicyName":"ecs-service",
+              "PolicyDocument":{
+                "Statement":[
+                  {
+                    "Effect":"Allow",
+                    "Action":[
+                      "elasticloadbalancing:DeregisterInstancesFromLoadBalancer",
+                      "elasticloadbalancing:DeregisterTargets",
+                      "elasticloadbalancing:Describe*",
+                      "elasticloadbalancing:RegisterInstancesWithLoadBalancer",
+                      "elasticloadbalancing:RegisterTargets",
+                      "ec2:Describe*",
+                      "ec2:AuthorizeSecurityGroupIngress"
+                    ],
+                    "Resource":"*"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "AutoscalingRole":{
+        "Type":"AWS::IAM::Role",
+        "Properties":{
+          "AssumeRolePolicyDocument":{
+            "Statement":[
+              {
+                "Effect":"Allow",
+                "Principal":{
+                  "Service":[
+                    "application-autoscaling.amazonaws.com"
+                  ]
+                },
+                "Action":[
+                  "sts:AssumeRole"
+                ]
+              }
+            ]
+          },
+          "Path":"/",
+          "Policies":[
+            {
+              "PolicyName":"service-autoscaling",
+              "PolicyDocument":{
+                "Statement":[
+                  {
+                    "Effect":"Allow",
+                    "Action":[
+                      "application-autoscaling:*",
+                      "cloudwatch:DescribeAlarms",
+                      "cloudwatch:PutMetricAlarm",
+                      "ecs:DescribeServices",
+                      "ecs:UpdateService"
+                    ],
+                    "Resource":"*"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "EC2InstanceProfile":{
+        "Type":"AWS::IAM::InstanceProfile",
+        "Properties":{
+          "Path":"/",
+          "Roles":[
+            {
+              "Ref":"EC2Role"
+            }
+          ]
+        }
+      },
+      "ESALBRoute53Record": {
+        "Type" : "AWS::Route53::RecordSet",
+        "Properties" : {
+          "HostedZoneName" : {
+            "Ref":"Route53HostedZoneName"
+          },
+          "Name" : {
+            "Fn::Join":[
+              "",
+              [
+                "es.",
+                { "Ref":"Route53HostedZoneName" }
+              ]
+            ]
+          },
+          "Type" : "A",
+          "AliasTarget" : {
+            "HostedZoneId" : {"Fn::GetAtt": ["ESALB", "CanonicalHostedZoneID"]},
+            "DNSName": {"Fn::GetAtt": ["ESALB", "DNSName"]},
+            "EvaluateTargetHealth": "false"
+          }
+        }
+      },
+      "KibanaALBRoute53Record": {
+        "Type" : "AWS::Route53::RecordSet",
+        "Properties" : {
+          "HostedZoneName" : {
+            "Ref":"Route53HostedZoneName"
+          },
+          "Name" : {
+            "Fn::Join":[
+              "",
+              [
+                "kibana.",
+                { "Ref":"Route53HostedZoneName" }
+              ]
+            ]
+          },
+          "Type" : "A",
+          "AliasTarget" : {
+            "HostedZoneId" : {"Fn::GetAtt": ["KibanaALB", "CanonicalHostedZoneID"]},
+            "DNSName": {"Fn::GetAtt": ["KibanaALB", "DNSName"]},
+            "EvaluateTargetHealth": "false"
+          }
+        }
+      }
+    },
+    "Outputs":{
+      "esecsservice":{
+        "Value":{
+          "Ref":"ESECSService"
+        }
+      },
+      "kibanaecsservice":{
+        "Value":{
+          "Ref":"KibanaECSService"
+        }
+      },
+      "ecscluster":{
+        "Value":{
+          "Ref":"ECSCluster"
+        }
+      },
+      "ESALB":{
+        "Description":"Your ES ALB DNS URL",
+        "Value":{
+          "Fn::Join":[
+            "",
+            [
+              {
+                "Fn::GetAtt":[
+                  "ESALB",
+                  "DNSName"
+                ]
+              }
+            ]
+          ]
+        }
+      },
+      "KibanaALB":{
+        "Description":"Your Kibana ALB DNS URL",
+        "Value":{
+          "Fn::Join":[
+            "",
+            [
+              {
+                "Fn::GetAtt":[
+                  "KibanaALB",
+                  "DNSName"
+                ]
+              }
+            ]
+          ]
+        }
+      },
+      "estaskdef":{
+        "Value":{
+          "Ref":"ESTaskDefinition"
+        }
+      },
+      "kibanataskdef":{
+        "Value":{
+          "Ref":"KibanaTaskDefinition"
+        }
+      }
+    }
+  }

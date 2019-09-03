@@ -89,3 +89,7 @@ Adding EBS stores for storage and using PIOPS as advised on elastic's documentat
 Amazon explains this:
 > The volume is configured as a Logical Volume Management (LVM) device and it is accessed directly by Docker via the devicemapper backend. Because the volume is not mounted, you cannot use standard storage information commands (such as df -h) to determine the available storage.
 
+**AutoScaling**
+
+We will be using Autoscaling to scale up or down the EC2 instances as required. [Autoscaling Launch config](AutoScalingLaunchConfig.txt) can be used as reference. 
+

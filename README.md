@@ -3,9 +3,10 @@
 
 I will outline the procedure I followed to deploy Elastic Stack on AWS ECS.
 
-> Here is the architecture I followed to build this
+**Note:** The following arch has been deprecated as Docker released 
+Here is the architecture I followed to build this
 
-![Arch](ELK-ECS.jpg)
+![Arch](ELK-ECS-awslogs.jpg)
 
 In the diagram above, we have the following containers:
 - Three ElasticSearch containers to ensure high availability. Odd number to minimize split brain scenarios.
@@ -18,10 +19,11 @@ In the diagram above, we have the following containers:
 
 *Working with immutable infrastructure to replace defective componenets of this architecture.*
 
-After adding DockerFile and elasticsearch.yml configuration files, run the aws-ecr-bake-and-push.sh file to push a new docker image into the private docker repo. 
+After adding DockerFile and elasticsearch.yml configuration files, run the aws-ecr-bake-and-push.sh file to push a new docker image into the private docker repo on AWS ECR. 
 ```
-./aws-ecr-bake-and-push.sh elasticsearch
+./elk-stack-aws-ecr-bake-and-push.sh elasticsearch
 ```
+
 
 After we have the customized docker image with elasticsearch on ECR, we need to create a cluster in ECS with 3 EC2 instances. 
 
@@ -80,34 +82,6 @@ chown -R 1000.1000 /usr/share/elasticsearch/data/;
 --//--
 ```
 
-```
-"UserData" : { "Fn::Base64" : { "Fn::Join" : ["", [
-"Content-Type: multipart/mixed; boundary='//'\n",
-"MIME-Version: 1.0\n",
-"\n",
-"--//\n",
-"Content-Type: text/cloud-boothook; charset='us-ascii'\n",
-"\n",
-"# Set Docker daemon options\n",
-"cloud-init-per once docker_options echo 'OPTIONS="${OPTIONS} --storage-opt dm.basesize=50G"' >> /etc/sysconfig/docker\n",
-"\n",
-"--//\n",
-"Content-Type: text/x-shellscript; charset='us-ascii'\n",
-"\n",
-"#!/bin/bash -xe\n",
-"cat << 'EOF' >> /etc/ecs/ecs.config\n",
-"echo ECS_CLUSTER=dev-elk-cluster\n",
-"echo ECS_BACKEND_HOST=dev-elk-cluster\n",
-"echo ECS_ENGINE_TASK_CLEANUP_WAIT_DURATION=15m\n",
-"echo ECS_IMAGE_CLEANUP_INTERVAL=10m\n",
-"EOF\n",
-"sysctl -w vm.max_map_count=262144\n",
-"mkdir -p /usr/share/elasticsearch/data/\n",
-"chown -R 1000.1000 /usr/share/elasticsearch/data/\n",
-"\n",
-"--//--\n"
-]]}}
-```
 **Storage**
 
 Adding EBS stores for storage and using PIOPS as advised on elastic's documentation. Or we can go with using Instance Store that has the advantage of hard disk physical attached to the host and also benefit of avoiding to pay extra for EBS. 
@@ -121,3 +95,16 @@ Amazon explains this:
 
 We will be using Autoscaling to scale up or down the EC2 instances as required. [Autoscaling Launch config](AutoScalingLaunchConfig.txt) can be used as reference. 
 
+> We can use CloudFormation to deploy ECS containers with ElasticSearch and Kibana. 
+
+To create custom ElasticSearch Docker images, I am using [AWS ECR push script](elk-stack-aws-ecr-push.sh) using the CloudFormation stack with [AWS ECR params](elk-stack-aws-ecr-parameters.json) and this [CloudFormation template](elk-stack-aws-ecr.json).
+
+I am using this [bash script](elk-stack-aws-ecr-bake-and-push.sh) to push custom elasticsearch images to AWS ECR when needed. 
+
+Once the custom images are updated in ECR, we can work on deploying ECS instances. This can be done using CloudFormation as well. 
+
+*Note:* CloudFormation will require privileges to create IAM roles.
+
+To create EC2 instances with ECS and using the images from ECR repo, I am using [AWS ECS bash script]() and the [CloudFormation template](elk-stack-aws-ecs.json) that will use these [parameters](elk-stack-aws-ecs-parameters.json).
+
+The need for Logstash has been deprecated since AWS ECS can utilize [awslogs](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/using_awslogs.html) Log driver.
